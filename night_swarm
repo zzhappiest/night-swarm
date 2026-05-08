@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>夜幕虫潮 Night Swarm</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070914;
+      --panel: rgba(12, 18, 34, .78);
+      --line: rgba(255,255,255,.12);
+      --text: #eef3ff;
+      --muted: #9aa8c7;
+      --accent: #8ee6ff;
+      --danger: #ff5f7e;
+      --gold: #ffd166;
+      --green: #71f7a8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); }
+    canvas { display: block; width: 100vw; height: 100vh; background: radial-gradient(circle at center, #141a2f 0%, #070914 72%); }
+    .hud { position: fixed; inset: 16px 16px auto 16px; display: grid; grid-template-columns: 1fr auto; gap: 12px; pointer-events: none; z-index: 2; }
+    .topline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .pill { padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); backdrop-filter: blur(10px); font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+    .barWrap { grid-column: 1 / -1; height: 10px; background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--green)); transition: width .12s linear; }
+    .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 15, .72); backdrop-filter: blur(8px); z-index: 5; padding: 20px; }
+    .card { width: min(720px, 94vw); border: 1px solid var(--line); background: linear-gradient(180deg, rgba(23,30,54,.94), rgba(9,13,27,.94)); border-radius: 28px; padding: 26px; box-shadow: 0 30px 90px rgba(0,0,0,.45); }
+    h1 { margin: 0 0 8px; font-size: clamp(32px, 7vw, 60px); letter-spacing: -0.06em; line-height: .95; }
+    h2 { margin: 0 0 12px; font-size: 28px; }
+    p { color: var(--muted); line-height: 1.75; margin: 10px 0; }
+    .btn { appearance: none; border: 0; cursor: pointer; color: #06101c; background: linear-gradient(135deg, #8ee6ff, #71f7a8); border-radius: 16px; padding: 13px 18px; font-weight: 800; font-size: 15px; box-shadow: 0 16px 40px rgba(113,247,168,.16); }
+    .btn.secondary { color: var(--text); background: rgba(255,255,255,.09); border: 1px solid var(--line); box-shadow: none; }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+    .upgradeGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+    .upgrade { text-align: left; color: var(--text); background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 20px; padding: 16px; cursor: pointer; min-height: 142px; }
+    .upgrade:hover { transform: translateY(-2px); border-color: rgba(142,230,255,.65); background: rgba(142,230,255,.09); }
+    .upgrade b { display: block; font-size: 17px; margin-bottom: 8px; color: var(--accent); }
+    .upgrade span { color: var(--muted); line-height: 1.55; font-size: 14px; }
+    .hide { display: none !important; }
+    .mobilePad { position: fixed; left: 18px; bottom: 18px; width: 132px; height: 132px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,.05); z-index: 3; touch-action: none; display: none; }
+    .stick { position: absolute; left: 42px; top: 42px; width: 48px; height: 48px; border-radius: 50%; background: rgba(142,230,255,.72); box-shadow: 0 0 30px rgba(142,230,255,.25); }
+    @media (max-width: 760px) {
+      .hud { inset: 10px; }
+      .pill { font-size: 12px; padding: 7px 9px; }
+      .upgradeGrid { grid-template-columns: 1fr; }
+      .card { padding: 20px; border-radius: 22px; }
+      .mobilePad { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Night Swarm game canvas"></canvas>
+
+  <div class="hud">
+    <div class="topline">
+      <div class="pill">生命 <b id="hpText">100</b></div>
+      <div class="pill">等级 <b id="levelText">1</b></div>
+      <div class="pill">击败 <b id="killText">0</b></div>
+      <div class="pill">时间 <b id="timeText">00:00</b></div>
+    </div>
+    <div class="pill">移动：WASD / 方向键</div>
+    <div class="barWrap"><div class="bar" id="xpBar"></div></div>
+  </div>
+
+  <div class="mobilePad" id="pad"><div class="stick" id="stick"></div></div>
+
+  <section class="overlay" id="startScreen">
+    <div class="card">
+      <h1>夜幕虫潮<br><span style="color:var(--accent)">Night Swarm</span></h1>
+      <p>一款可直接运行的网页割草生存小游戏。你只负责移动，角色会自动攻击。击败虫群、收集能量、选择升级，在黑夜中尽可能活得更久。</p>
+      <p>操作：WASD / 方向键移动；手机端可使用左下角虚拟摇杆。</p>
+      <div class="actions">
+        <button class="btn" id="startBtn">开始游戏</button>
+        <button class="btn secondary" id="howBtn">玩法提示</button>
+      </div>
+      <p id="tips" class="hide">提示：前期优先拿攻速或伤害，中期需要移动速度和拾取范围。不要停在地图中央，绕圈能制造生存空间。</p>
+    </div>
+  </section>
+
+  <section class="overlay hide" id="upgradeScreen">
+    <div class="card">
+      <h2>选择一次升级</h2>
+      <p>虫潮正在变强。选择一个方向强化你的守夜人。</p>
+      <div class="upgradeGrid" id="upgradeGrid"></div>
+    </div>
+  </section>
+
+  <section class="overlay hide" id="gameOverScreen">
+    <div class="card">
+      <h2>黑夜吞没了你</h2>
+      <p id="finalStats"></p>
+      <div class="actions">
+        <button class="btn" id="restartBtn">再来一局</button>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const hpText = document.getElementById('hpText');
+    const levelText = document.getElementById('levelText');
+    const killText = document.getElementById('killText');
+    const timeText = document.getElementById('timeText');
+    const xpBar = document.getElementById('xpBar');
+    const startScreen = document.getElementById('startScreen');
+    const upgradeScreen = document.getElementById('upgradeScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const upgradeGrid = document.getElementById('upgradeGrid');
+    const finalStats = document.getElementById('finalStats');
+    const pad = document.getElementById('pad');
+    const stick = document.getElementById('stick');
+
+    let W = 0, H = 0, dpr = 1;
+    function resize() {
+      dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resize); resize();
+
+    const keys = new Set();
+    window.addEventListener('keydown', e => {
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD',' '].includes(e.code)) e.preventDefault();
+      keys.add(e.code);
+    });
+    window.addEventListener('keyup', e => keys.delete(e.code));
+
+    let touchVec = { x: 0, y: 0 };
+    let touching = false;
+    function handleTouch(e) {
+      const r = pad.getBoundingClientRect();
+      const t = e.touches[0];
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let dx = t.clientX - cx, dy = t.clientY - cy;
+      const max = 42;
+      const len = Math.hypot(dx, dy) || 1;
+      const clamped = Math.min(max, len);
+      dx = dx / len * clamped; dy = dy / len * clamped;
+      stick.style.left = (42 + dx) + 'px';
+      stick.style.top = (42 + dy) + 'px';
+      touchVec.x = dx / max; touchVec.y = dy / max;
+    }
+    pad.addEventListener('touchstart', e => { touching = true; handleTouch(e); e.preventDefault(); }, { passive: false });
+    pad.addEventListener('touchmove', e => { handleTouch(e); e.preventDefault(); }, { passive: false });
+    pad.addEventListener('touchend', () => { touching = false; touchVec = {x:0,y:0}; stick.style.left = '42px'; stick.style.top = '42px'; });
+
+    const state = {
+      mode: 'start',
+      t: 0,
+      last: 0,
+      spawn: 0,
+      shoot: 0,
+      kills: 0,
+      enemies: [],
+      bullets: [],
+      orbs: [],
+      particles: [],
+      shake: 0,
+      player: null
+    };
+
+    function newPlayer() {
+      return { x: W/2, y: H/2, r: 16, hp: 100, maxHp: 100, speed: 245, level: 1, xp: 0, need: 18, damage: 18, fireRate: .42, range: 360, magnet: 90, bullets: 1, pierce: 0 };
+    }
+
+    function resetGame() {
+      state.mode = 'play'; state.t = 0; state.last = performance.now(); state.spawn = 0; state.shoot = 0; state.kills = 0;
+      state.enemies = []; state.bullets = []; state.orbs = []; state.particles = []; state.shake = 0; state.player = newPlayer();
+      startScreen.classList.add('hide'); upgradeScreen.classList.add('hide'); gameOverScreen.classList.add('hide');
+      requestAnimationFrame(loop);
+    }
+
+    const upgrades = [
+      { name: '强化弹头', desc: '伤害 +8。更快清理厚血敌人。', apply: p => p.damage += 8 },
+      { name: '快速装填', desc: '攻击间隔降低 14%。输出更加稳定。', apply: p => p.fireRate = Math.max(.14, p.fireRate * .86) },
+      { name: '双联射击', desc: '弹体数量 +1。自动攻击覆盖更多目标。', apply: p => p.bullets += 1 },
+      { name: '轻装移动', desc: '移动速度 +12%。更容易拉开包围。', apply: p => p.speed += 30 },
+      { name: '能量磁场', desc: '拾取范围 +45。升级节奏更快。', apply: p => p.magnet += 45 },
+      { name: '生命核心', desc: '最大生命 +22，并回复 22 点。', apply: p => { p.maxHp += 22; p.hp = Math.min(p.maxHp, p.hp + 22); } },
+      { name: '穿透弹道', desc: '子弹穿透 +1。适合处理密集虫群。', apply: p => p.pierce += 1 },
+      { name: '应急修复', desc: '立即回复 35 点生命。', apply: p => p.hp = Math.min(p.maxHp, p.hp + 35) },
+      { name: '远距索敌', desc: '攻击范围 +90。提前削弱敌群。', apply: p => p.range += 90 }
+    ];
+
+    function pickUpgrades() {
+      const pool = [...upgrades].sort(() => Math.random() - .5).slice(0, 3);
+      upgradeGrid.innerHTML = '';
+      for (const u of pool) {
+        const btn = document.createElement('button');
+        btn.className = 'upgrade';
+        btn.innerHTML = `<b>${u.name}</b><span>${u.desc}</span>`;
+        btn.onclick = () => { u.apply(state.player); upgradeScreen.classList.add('hide'); state.mode = 'play'; state.last = performance.now(); requestAnimationFrame(loop); };
+        upgradeGrid.appendChild(btn);
+      }
+      state.mode = 'upgrade';
+      upgradeScreen.classList.remove('hide');
+    }
+
+    function randEdge() {
+      const side = Math.floor(Math.random() * 4);
+      if (side === 0) return { x: -30, y: Math.random() * H };
+      if (side === 1) return { x: W + 30, y: Math.random() * H };
+      if (side === 2) return { x: Math.random() * W, y: -30 };
+      return { x: Math.random() * W, y: H + 30 };
+    }
+
+    function spawnEnemy() {
+      const p = randEdge();
+      const minutes = state.t / 60;
+      const elite = Math.random() < Math.min(.22, minutes * .035);
+      const fast = !elite && Math.random() < Math.min(.28, minutes * .05);
+      const hp = elite ? 80 + minutes * 22 : fast ? 26 + minutes * 8 : 34 + minutes * 10;
+      state.enemies.push({
+        x: p.x, y: p.y,
+        r: elite ? 18 : fast ? 10 : 13,
+        hp, maxHp: hp,
+        speed: elite ? 64 + minutes * 4 : fast ? 122 + minutes * 5 : 82 + minutes * 4,
+        damage: elite ? 18 : 10,
+        xp: elite ? 8 : fast ? 3 : 4,
+        color: elite ? '#ff5f7e' : fast ? '#ffd166' : '#b084ff'
+      });
+    }
+
+    function inputVector() {
+      let x = 0, y = 0;
+      if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
+      if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
+      if (keys.has('KeyW') || keys.has('ArrowUp')) y -= 1;
+      if (keys.has('KeyS') || keys.has('ArrowDown')) y += 1;
+      if (touching) { x += touchVec.x; y += touchVec.y; }
+      const len = Math.hypot(x, y) || 1;
+      return { x: x / len, y: y / len, active: Math.abs(x) + Math.abs(y) > 0 };
+    }
+
+    function nearestEnemy() {
+      const p = state.player;
+      let best = null, bd = Infinity;
+      for (const e of state.enemies) {
+        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        if (d < bd && d <= p.range) { best = e; bd = d; }
+      }
+      return best;
+    }
+
+    function shoot() {
+      const p = state.player;
+      const target = nearestEnemy();
+      if (!target) return;
+      const base = Math.atan2(target.y - p.y, target.x - p.x);
+      const count = p.bullets;
+      for (let i = 0; i < count; i++) {
+        const spread = (i - (count - 1) / 2) * 0.14;
+        const a = base + spread;
+        state.bullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * 570, vy: Math.sin(a) * 570, r: 5, life: .95, damage: p.damage, pierce: p.pierce, hit: new Set() });
+      }
+    }
+
+    function addParticles(x, y, n, color) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 40 + Math.random() * 150;
+        state.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: .35 + Math.random() * .35, color });
+      }
+    }
+
+    function update(dt) {
+      const p = state.player;
+      state.t += dt;
+      state.spawn -= dt;
+      state.shoot -= dt;
+      state.shake = Math.max(0, state.shake - dt * 18);
+
+      const v = inputVector();
+      if (v.active) { p.x += v.x * p.speed * dt; p.y += v.y * p.speed * dt; }
+      p.x = Math.max(p.r, Math.min(W - p.r, p.x)); p.y = Math.max(p.r, Math.min(H - p.r, p.y));
+
+      const spawnGap = Math.max(.16, .72 - state.t * .006);
+      while (state.spawn <= 0) { spawnEnemy(); state.spawn += spawnGap; if (state.t > 55 && Math.random() < .25) spawnEnemy(); }
+      if (state.shoot <= 0) { shoot(); state.shoot = p.fireRate; }
+
+      for (const e of state.enemies) {
+        const a = Math.atan2(p.y - e.y, p.x - e.x);
+        e.x += Math.cos(a) * e.speed * dt;
+        e.y += Math.sin(a) * e.speed * dt;
+        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        if (d < e.r + p.r) {
+          p.hp -= e.damage * dt * 1.15;
+          state.shake = Math.min(8, state.shake + 14 * dt);
+        }
+      }
+
+      for (const b of state.bullets) {
+        b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+        for (const e of state.enemies) {
+          if (b.hit.has(e)) continue;
+          if (Math.hypot(b.x - e.x, b.y - e.y) < b.r + e.r) {
+            b.hit.add(e); e.hp -= b.damage; b.pierce -= 1; addParticles(e.x, e.y, 4, e.color); state.shake = Math.min(5, state.shake + .9);
+            if (b.pierce < 0) b.life = -1;
+            break;
+          }
+        }
+      }
+      state.bullets = state.bullets.filter(b => b.life > 0 && b.x > -80 && b.y > -80 && b.x < W + 80 && b.y < H + 80);
+
+      const dead = [];
+      state.enemies = state.enemies.filter(e => {
+        if (e.hp <= 0) { dead.push(e); return false; }
+        return true;
+      });
+      for (const e of dead) {
+        state.kills += 1;
+        state.orbs.push({ x: e.x, y: e.y, r: 5, value: e.xp });
+        addParticles(e.x, e.y, 12, e.color);
+      }
+
+      for (const o of state.orbs) {
+        const d = Math.hypot(o.x - p.x, o.y - p.y);
+        if (d < p.magnet) {
+          const a = Math.atan2(p.y - o.y, p.x - o.x);
+          const pull = 240 + (1 - d / p.magnet) * 420;
+          o.x += Math.cos(a) * pull * dt; o.y += Math.sin(a) * pull * dt;
+        }
+        if (d < p.r + o.r + 5) {
+          p.xp += o.value; o.dead = true;
+          while (p.xp >= p.need) {
+            p.xp -= p.need; p.level += 1; p.need = Math.floor(p.need * 1.26 + 8); p.hp = Math.min(p.maxHp, p.hp + 8);
+            pickUpgrades();
+          }
+        }
+      }
+      state.orbs = state.orbs.filter(o => !o.dead);
+
+      for (const part of state.particles) { part.x += part.vx * dt; part.y += part.vy * dt; part.vx *= .96; part.vy *= .96; part.life -= dt; }
+      state.particles = state.particles.filter(part => part.life > 0);
+
+      if (p.hp <= 0) gameOver();
+      updateHud();
+    }
+
+    function updateHud() {
+      const p = state.player;
+      hpText.textContent = Math.max(0, Math.ceil(p.hp)) + '/' + p.maxHp;
+      levelText.textContent = p.level;
+      killText.textContent = state.kills;
+      const m = Math.floor(state.t / 60), s = Math.floor(state.t % 60);
+      timeText.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      xpBar.style.width = Math.max(0, Math.min(100, p.xp / p.need * 100)) + '%';
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.globalAlpha = .22;
+      ctx.strokeStyle = '#29314d'; ctx.lineWidth = 1;
+      const step = 56;
+      const ox = (state.t * 10) % step, oy = (state.t * 7) % step;
+      for (let x = -step + ox; x < W + step; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = -step + oy; y < H + step; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+    }
+
+    function draw() {
+      const shakeX = (Math.random() - .5) * state.shake;
+      const shakeY = (Math.random() - .5) * state.shake;
+      ctx.clearRect(0, 0, W, H);
+      ctx.save(); ctx.translate(shakeX, shakeY);
+      drawGrid();
+      const p = state.player || { x: W/2, y: H/2, r: 16 };
+
+      for (const o of state.orbs) {
+        ctx.beginPath(); ctx.fillStyle = '#71f7a8'; ctx.shadowColor = '#71f7a8'; ctx.shadowBlur = 16; ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      }
+      for (const e of state.enemies) {
+        ctx.beginPath(); ctx.fillStyle = e.color; ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 3; ctx.stroke();
+        const w = e.r * 2.1;
+        ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(e.x - w/2, e.y - e.r - 9, w, 3);
+        ctx.fillStyle = '#ff5f7e'; ctx.fillRect(e.x - w/2, e.y - e.r - 9, w * Math.max(0, e.hp / e.maxHp), 3);
+      }
+      for (const b of state.bullets) {
+        ctx.beginPath(); ctx.fillStyle = '#8ee6ff'; ctx.shadowColor = '#8ee6ff'; ctx.shadowBlur = 12; ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      }
+      for (const part of state.particles) {
+        ctx.globalAlpha = Math.max(0, part.life); ctx.fillStyle = part.color; ctx.fillRect(part.x, part.y, 3, 3); ctx.globalAlpha = 1;
+      }
+
+      ctx.beginPath(); ctx.strokeStyle = 'rgba(142,230,255,.14)'; ctx.lineWidth = 2; ctx.arc(p.x, p.y, p.range, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.fillStyle = '#eef3ff'; ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.fillStyle = '#8ee6ff'; ctx.arc(p.x + 5, p.y - 4, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#71f7a8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 5, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * Math.max(0, p.hp / p.maxHp)); ctx.stroke();
+      ctx.restore();
+
+      const grd = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*.2, W/2, H/2, Math.max(W,H)*.72);
+      grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, 'rgba(0,0,0,.55)');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+    }
+
+    function gameOver() {
+      state.mode = 'over';
+      const m = Math.floor(state.t / 60), s = Math.floor(state.t % 60);
+      finalStats.textContent = `本局生存 ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}，等级 ${state.player.level}，击败 ${state.kills} 只虫群。`;
+      gameOverScreen.classList.remove('hide');
+    }
+
+    function loop(now) {
+      if (state.mode !== 'play') { draw(); return; }
+      const dt = Math.min(.033, (now - state.last) / 1000 || .016);
+      state.last = now;
+      update(dt);
+      draw();
+      if (state.mode === 'play') requestAnimationFrame(loop);
+    }
+
+    document.getElementById('startBtn').onclick = resetGame;
+    document.getElementById('restartBtn').onclick = resetGame;
+    document.getElementById('howBtn').onclick = () => document.getElementById('tips').classList.toggle('hide');
+    draw();
+  </script>
+</body>
+</html>
